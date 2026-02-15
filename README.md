@@ -4,6 +4,14 @@ Turret is a capability firewall for AI agents.
 
 Stop giving your agents secrets. Give them capabilities.
 
+## BLUF
+
+LLM agents are becoming the default interface to our systems. They also represent a new trust boundary: probabilistic behaviour, prompt injection, and cloud-backed execution with possible retention.
+
+The industry has excellent tools for storing secrets. What it largely lacks is a simple primitive for letting agents *do work* without ever holding raw credentials.
+
+Turret is that missing layer: a single, revocable front door that turns "agent access" into *capabilities* (approved actions) rather than a directory full of tokens.
+
 It exists because the security model of modern automation has shifted:
 
 - We are giving *probabilistic* systems (LLM agents) real authority: filesystem access, shells, deploy rights, and "just enough" admin.
@@ -35,7 +43,7 @@ We have password managers and secrets managers. We have SSO, reverse proxies, an
 They are great at storing secrets and issuing credentials to *trusted* apps.
 They are not built around the core constraint agents introduce:
 
-"Let the automation act, but do not let it hold (or ever see) raw secrets."
+> "Let the automation act, but do not let it hold (or ever see) raw secrets."
 
 Turret sits in the gap between "secret storage" and "doing real work".
 
@@ -77,6 +85,8 @@ In other words: one agent is one threat vector. It should have one credential.
 
 ![Turret threat model diagram](docs/threat-model.svg)
 
+> If you remember nothing else: agents should not carry secrets.
+
 ### Before: what many users are doing
 
 - Agents run with a directory full of tokens, SSH keys, and API keys.
@@ -98,12 +108,12 @@ Turret's job is not to be magical. It is to be boring, deterministic, and revoca
 
 ## What Turret does
 
-- Front door authentication (per-agent token)
-- Permission checks (which agent may call which actions)
-- Action registry (what actions exist; what parameters they accept)
-- Proxy execution (Turret/repeaters make the authenticated call)
-- Auditing (who did what, when; metadata not secrets)
-- Defense in depth guardrails (timeouts, size limits, deny unsafe headers, etc.)
+1. Front door authentication (one credential per agent)
+2. Permission checks (which agent may call which actions)
+3. Action registry (what actions exist; what parameters they accept)
+4. Proxy execution (Turret/repeaters make the authenticated call)
+5. Auditing (who did what, when; metadata not secrets)
+6. Defense in depth guardrails (timeouts, size limits, deny unsafe headers, etc.)
 
 ## What Turret is for (and who it is for)
 
@@ -134,6 +144,25 @@ It makes recovery and containment practical:
 - Centralize permissions so you can reduce what an agent can do over time.
 - Add audit trails so you can actually answer "what happened?".
 
+## Limitations (read this first)
+
+Turret is designed to solve a specific, increasingly common problem: *agents* holding too many secrets.
+
+It is not a general solution to host compromise.
+
+In particular:
+
+- Turret does **not** prevent memory exfiltration by a sufficiently privileged attacker on the same host.
+- Turret is **not** a replacement for an HSM/TPM/smartcard, and it does not (by default) store secrets in hardware-backed non-exportable keys.
+
+Turret improves safety by changing the shape of authority:
+
+- one credential per agent
+- one policy choke point
+- deterministic execution paths
+
+If your threat model includes local root/kernel compromise, treat Turret as a *containment and recovery primitive*, not a cryptographic vault.
+
 ## Staged roadmap
 
 Turret is built to be adopted in stages.
@@ -162,6 +191,29 @@ This is how you prevent agents from using legitimate access to pull massive sens
 - Structured audit logs
 - Key age tracking
 - Assisted rotation workflows (and later, automatic rotation where feasible)
+
+## Encrypted state + operators (age recipients)
+
+Turret will eventually support an optional encrypted state/vault model built on simple `age` encryption.
+
+At vault creation time you choose who can *fire up the turret*:
+
+- **Host recipient** (convenience): derive an `age` identity from the host SSH key. This allows unattended boot on that host.
+- **Operator recipients** (control): one or more operator keys (passphrase or hardware key). Turret cannot be fired up without an operator present.
+
+Availability trade-off:
+
+- With a host recipient, Turret can fire itself up after a reboot (good for automation).
+- With operator-only recipients, Turret stays offline after reboot until an operator fires it up (good for control).
+
+Operationally:
+
+- On startup Turret will first attempt to decrypt using the host identity.
+- If that fails, it will prompt:
+  - `Unable to decrypt with host keys. Operator required.`
+  - `Select type: 1) Passphrase, 2) Hardware key (work in progress)`
+
+This model improves disk-theft and reboot safety, but does not eliminate the fundamental limitation: once secrets are in memory, a compromised host can still exfiltrate them.
 
 ## Repeaters (the modularity model)
 
