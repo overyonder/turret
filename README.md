@@ -41,28 +41,28 @@ Turret sits between your agent and your services, acting as a Bunker-backed prox
 
 ### 1. The Single Front Door
 
-Your agent gets **one** credential: a Turret token. It uses this token to talk to the Turret daemon. The agent knows *nothing* else about your infrastructure.
+Your agent gets **one** credential: a Turret identity used to authenticate (sign) requests to the Turret daemon. The agent knows *nothing* else about your infrastructure.
 
 ### 2. Capabilities, Not Credentials
 
 The agent does not ask for "the database password." It asks to "fire off `db.query` with `"my query data"`."
-Turret validates the agent's signature, checks the permissions table, and—if approved—unlocks the necessary secret from its internal **Bunker**. It then fires off the action and the payload to the corresponding Repeater in the action registry as specified.
+Turret validates the agent's signature, checks the permissions table, and—if approved—unlocks the necessary secret from its internal **Bunker**. It then forwards the action and the payload to the corresponding Repeater.
 
 ### 3. Repeaters
 
 Turret itself is simple, and enforces a simple interface: "fire off `<action>` with `<payload>`. It attaches keys to payloads, but otherwise offloads specific implementations to **Repeaters**. The purpose of this is modularity: we don't want a monolithic binary that tries to integrate with every API on earth.
 
 * **Registration:** The operator (discussed later) registers Turret with its Repeaters during setup. This gives Turret a list of actions available through some Repeater, and whether the action takes/requires a payload.
-* **Repeaters are stateless adapters:** They receive the instruction to perform an action along with a payload that contains the key and any request parameters or other data needed. They convert this into service-specific API calls with pure functional transformations. This allows Turret's implementation to remain extremely simple. 
-* **Zero-Knowledge Storage:** Repeaters do **not** store API keys. They know *how* to query an API, but they lack the access to do so until it is provided by Turret.
+* **Repeaters are stateless transformations:** They receive the instruction to perform an action along with request parameters and any secrets Turret attaches for that invocation. They deterministically translate that into service-specific API calls. This is why Turret can happily send secrets to repeaters: repeaters are designed to be stateless adapters rather than secret stores.
+* **No persistence:** Repeaters do **not** persist API keys. They can execute actions only when Turret supplies the necessary secrets for that request.
 
 ### 4. The Result
 
-The agent gets the *output* of the work. The Repeater gets to *do* the work. But **only Turret holds the keys**, and it keeps them locked in the Bunker until they are needed.
+The agent gets the *output* of the work. The Repeater gets to *do* the work. Turret keeps secrets locked in the Bunker until they are needed.
 
 If this reminds you of MCP, that's not unexpected. The difference is that MCP is about providing an LLM with an API interface only. MCPs **still hold the secrets they use**, or require them to be provided by the LLM. This means difficult recovery.
 
-Turret extends this by adapting the "password manager" model to the MCP framework. Agents don't hold lots of passwords, they hold their own master password only. *Unlike* password managers (which allow users to see their passwords), agents cannot see the tokens they're allowed to use. Operators (i.e. the system administrators) control access to the Bunker. It would be feasile to create an MCP implementation that speaks to the API, the LLM, and Turret. **This is the ideal separation of concerns**: hence why Turret doesn't try to be an MCP.
+Turret extends this by adapting the "password manager" model to the MCP framework. Agents don't hold lots of passwords, they hold their own credential only. *Unlike* password managers (which allow users to see their passwords), agents cannot see the secrets they're allowed to use. Operators (i.e. the system administrators) control access to the Bunker. It would be feasible to create an MCP implementation that speaks to the API, the LLM, and Turret. **This is the ideal separation of concerns**: hence why Turret doesn't try to be an MCP.
 
 ---
 
@@ -75,8 +75,8 @@ Turret is designed for a specific, modern threat model: **The AI agent is the pr
 
 **What Turret protects against:**
 
-* Exfiltration of service credentials via `printenv` or hallucination.
-* Prompt injection attacks trying to use credentials for unauthorized scope (Turret enforces strict action allow-lists).
+* Exfiltration of secrets via `printenv` or hallucination.
+* Prompt injection attacks trying to trigger unauthorized actions (Turret enforces strict action allow-lists).
 * Key extraction from disk at rest.
 
 **What Turret is NOT:**
@@ -92,14 +92,15 @@ Turret is a **containment primitive**. It ensures that one compromised agent equ
 
 **Status:** 🚧 **Early Scaffolding** 🚧
 
-We are currently building the core plumbing in Zig.
+We are currently building the core plumbing in Rust.
 
 * [x] Conceptual Model & Threat Analysis
-* [ ] Protocol Implementation (Framing/IPC)
-* [ ] Bunker/Persistence Layer
-* [ ] Reference Repeaters (`echo`, `http_proxy`)
+* [x] Encrypted bunker lifecycle (rage/age + operators)
+* [x] Unix socket servers (agent + repeater)
+* [x] Reference repeater: `echo`
+* [ ] Turret-signed responses + protocol hardening (planned)
 
-*See `SPEC.md` for the binary protocol specification and `docs/` for architecture deep-dives.* (WIP)
+*See `SPEC.md` for the protocol + bunker specification and `docs/` for architecture deep-dives.* (WIP)
 
 ## FAQ
 
