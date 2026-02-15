@@ -47,6 +47,14 @@ They are not built around the core constraint agents introduce:
 
 Turret sits in the gap between "secret storage" and "doing real work".
 
+More concretely:
+
+- Keycloak (and friends) solve identity and login flows for *humans and services*. They do not solve "agents can perform actions without ever holding long-lived service credentials".
+- Vaultwarden / pass solve *secret storage and retrieval*. If an agent can retrieve a secret, the agent can leak it.
+- SOPS solves *encrypted-at-rest configuration* and safe distribution to machines. It does not provide a capability gateway or an action policy layer for agents.
+
+Turret is the missing piece: it turns agent access into a revocable set of actions, with secrets staying behind a deterministic boundary.
+
 ## The winds have changed
 
 For years, we built automation around a simple assumption:
@@ -163,57 +171,11 @@ Turret improves safety by changing the shape of authority:
 
 If your threat model includes local root/kernel compromise, treat Turret as a *containment and recovery primitive*, not a cryptographic vault.
 
-## Staged roadmap
+## Project plan
 
-Turret is built to be adopted in stages.
+Implementation staging, development notes, and operational runbooks live in the notes vault:
 
-### Stage 1: plumbing (blast radius reduction)
-
-- Stop ambient secrets exposure (no more "export everything into the shell").
-- Agents authenticate to Turret with one token.
-- Turret proxies calls with guardrails.
-
-This already improves the most common failure mode: secrets ending up in the agent's prompt, logs, and provider retention.
-
-### Stage 2: capability-first API
-
-Replace "proxy an arbitrary HTTP request" with explicit capabilities:
-
-- `matrix.send_message(room_id, body)`
-- `qbittorrent.add_torrent(magnet, category)`
-- `proxmox.pct_status(ctid)`
-- etc.
-
-This is how you prevent agents from using legitimate access to pull massive sensitive payloads.
-
-### Stage 3: operations
-
-- Structured audit logs
-- Key age tracking
-- Assisted rotation workflows (and later, automatic rotation where feasible)
-
-## Encrypted state + operators (age recipients)
-
-Turret will eventually support an optional encrypted state/vault model built on simple `age` encryption.
-
-At vault creation time you choose who can *fire up the turret*:
-
-- **Host recipient** (convenience): derive an `age` identity from the host SSH key. This allows unattended boot on that host.
-- **Operator recipients** (control): one or more operator keys (passphrase or hardware key). Turret cannot be fired up without an operator present.
-
-Availability trade-off:
-
-- With a host recipient, Turret can fire itself up after a reboot (good for automation).
-- With operator-only recipients, Turret stays offline after reboot until an operator fires it up (good for control).
-
-Operationally:
-
-- On startup Turret will first attempt to decrypt using the host identity.
-- If that fails, it will prompt:
-  - `Unable to decrypt with host keys. Operator required.`
-  - `Select type: 1) Passphrase, 2) Hardware key (work in progress)`
-
-This model improves disk-theft and reboot safety, but does not eliminate the fundamental limitation: once secrets are in memory, a compromised host can still exfiltrate them.
+- `/mnt/home/documents/notes/projects/turret.md`
 
 ## Repeaters (the modularity model)
 
