@@ -20,6 +20,7 @@ Most agent setups still look like this:
 - Agents encouraged to do direct API calls with broad credentials.
 - Prompt injection can pivot into secret retrieval and lateral movement.
 - Incident response means rotating many unrelated secrets.
+- MCPs solve a related but different problem. They don't have a secure backing store, operator-gated unlock, or a flexible policy model.
 
 Turret changes that shape:
 
