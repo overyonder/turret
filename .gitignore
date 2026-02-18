@@ -5,3 +5,20 @@
 # Turret runtime
 /data/
 *.log
+
+# Rust build
+/target/
+
+# Turret bunker + daemon
+*.bnkr
+*.sock
+*.pid
+.turret.recipients.tmp
+.turret.bunker.tmp
+
+# Local keys / local bunkers
+operator_ed25519
+operator_ed25519.pub
+smoke_operator_ed25519
+smoke_operator_ed25519.pub
+bunker.bin

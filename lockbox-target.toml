@@ -1,0 +1,11 @@
+[targets.lockbox.shape]
+allow = ["argv", "stdin"]
+forbid = ["command", "env"]
+require = ["argv"]
+argv_placeholders = 1
+
+[targets.lockbox.transform]
+out_command = "./target/debug/lockbox"
+out_argv_replace = {"{1}" = "{LOCKBOX_1}"}
+out_env = {"isyourname" = "{LOCKBOX_2}"}
+out_stdin_replace = {}

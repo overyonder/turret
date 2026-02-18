@@ -1,16 +1,43 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as B64;
 use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetShape {
+    #[serde(default)]
+    pub allow: BTreeSet<String>,
+    #[serde(default)]
+    pub forbid: BTreeSet<String>,
+    #[serde(default)]
+    pub require: BTreeSet<String>,
+    #[serde(default)]
+    pub argv_placeholders: Option<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetTransform {
+    pub out_command: String,
+    #[serde(default)]
+    pub out_argv_replace: BTreeMap<String, String>,
+    #[serde(default)]
+    pub out_env: BTreeMap<String, String>,
+    #[serde(default)]
+    pub out_stdin_replace: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TargetDef {
+    pub shape: TargetShape,
+    pub transform: TargetTransform,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Bunker {
     pub operators: BTreeSet<String>,
-    pub agents: BTreeMap<String, [u8; 32]>,
-    pub repeaters: BTreeMap<String, [u8; 32]>,
-    pub actions: BTreeMap<String, String>,
+    pub agents: BTreeMap<String, String>,
+    pub targets: BTreeMap<String, TargetDef>,
     pub permissions: BTreeMap<String, BTreeSet<String>>,
+    pub secrets: BTreeMap<String, String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -30,9 +57,9 @@ impl Bunker {
         Self {
             operators: BTreeSet::new(),
             agents: BTreeMap::new(),
-            repeaters: BTreeMap::new(),
-            actions: BTreeMap::new(),
+            targets: BTreeMap::new(),
             permissions: BTreeMap::new(),
+            secrets: BTreeMap::new(),
         }
     }
 
@@ -53,19 +80,46 @@ impl Bunker {
             return Err(BunkerError::Bad("no operators"));
         }
 
-        for rep in self.actions.values() {
-            if !self.repeaters.contains_key(rep) {
-                return Err(BunkerError::Bad("action references unknown repeater"));
-            }
-        }
-
         for (agent, allowed) in &self.permissions {
             if !self.agents.contains_key(agent) {
                 return Err(BunkerError::Bad("permission references unknown agent"));
             }
-            for action in allowed {
-                if !self.actions.contains_key(action) {
-                    return Err(BunkerError::Bad("permission references unknown action"));
+            for target in allowed {
+                if !self.targets.contains_key(target) {
+                    return Err(BunkerError::Bad("permission references unknown target"));
+                }
+            }
+        }
+
+        for (target_name, def) in &self.targets {
+            if target_name.is_empty() {
+                return Err(BunkerError::Bad("empty target name"));
+            }
+            if def.transform.out_command.trim().is_empty() {
+                return Err(BunkerError::Bad("target out_command is empty"));
+            }
+
+            for field in def
+                .shape
+                .allow
+                .iter()
+                .chain(def.shape.forbid.iter())
+                .chain(def.shape.require.iter())
+            {
+                if !matches!(field.as_str(), "command" | "argv" | "env" | "stdin") {
+                    return Err(BunkerError::Bad("target shape has unknown field"));
+                }
+            }
+
+            for field in &def.shape.require {
+                if def.shape.forbid.contains(field) {
+                    return Err(BunkerError::Bad("target shape conflicts: field both required and forbidden"));
+                }
+            }
+
+            for s in collect_secret_refs(def) {
+                if !self.secrets.contains_key(&s) {
+                    return Err(BunkerError::BadOwned(format!("target references unknown secret '{s}'")));
                 }
             }
         }
@@ -74,34 +128,57 @@ impl Bunker {
     }
 }
 
+fn collect_secret_refs(def: &TargetDef) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    collect_refs_from_string(&def.transform.out_command, &mut out);
+    for v in def.transform.out_argv_replace.values() {
+        collect_refs_from_string(v, &mut out);
+    }
+    for (k, v) in &def.transform.out_env {
+        collect_refs_from_string(k, &mut out);
+        collect_refs_from_string(v, &mut out);
+    }
+    for v in def.transform.out_stdin_replace.values() {
+        collect_refs_from_string(v, &mut out);
+    }
+    out
+}
+
+fn collect_refs_from_string(s: &str, out: &mut BTreeSet<String>) {
+    let mut pos = 0usize;
+    while let Some(start_rel) = s[pos..].find('{') {
+        let start = pos + start_rel;
+        let Some(end_rel) = s[start..].find('}') else { break };
+        let end = start + end_rel;
+        let token = &s[start + 1..end];
+        if !token.is_empty()
+            && token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            out.insert(token.to_string());
+        }
+        pos = end + 1;
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct TomlBunker {
     version: u32,
     operators: Operators,
-
     #[serde(default)]
-    agents: BTreeMap<String, KeyEntry>,
+    agents: BTreeMap<String, String>,
     #[serde(default)]
-    repeaters: BTreeMap<String, KeyEntry>,
+    targets: BTreeMap<String, TargetDef>,
     #[serde(default)]
-    actions: BTreeMap<String, String>,
+    permissions: BTreeMap<String, Vec<String>>,
     #[serde(default)]
-    permissions: BTreeMap<String, PermissionEntry>,
+    secrets: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Operators {
     recipients: Vec<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct KeyEntry {
-    ed25519_pubkey_b64: String,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct PermissionEntry {
-    allow: Vec<String>,
 }
 
 impl From<Bunker> for TomlBunker {
@@ -110,52 +187,19 @@ impl From<Bunker> for TomlBunker {
             recipients: b.operators.into_iter().collect(),
         };
 
-        let agents = b
-            .agents
-            .into_iter()
-            .map(|(id, pk)| {
-                (
-                    id,
-                    KeyEntry {
-                        ed25519_pubkey_b64: B64.encode(pk),
-                    },
-                )
-            })
-            .collect();
-
-        let repeaters = b
-            .repeaters
-            .into_iter()
-            .map(|(id, pk)| {
-                (
-                    id,
-                    KeyEntry {
-                        ed25519_pubkey_b64: B64.encode(pk),
-                    },
-                )
-            })
-            .collect();
-
         let permissions = b
             .permissions
             .into_iter()
-            .map(|(agent, allowed)| {
-                (
-                    agent,
-                    PermissionEntry {
-                        allow: allowed.into_iter().collect(),
-                    },
-                )
-            })
+            .map(|(agent, allowed)| (agent, allowed.into_iter().collect()))
             .collect();
 
         Self {
             version: 1,
             operators,
-            agents,
-            repeaters,
-            actions: b.actions,
+            agents: b.agents,
+            targets: b.targets,
             permissions,
+            secrets: b.secrets,
         }
     }
 }
@@ -169,60 +213,20 @@ impl TryFrom<TomlBunker> for Bunker {
         }
 
         let operators: BTreeSet<String> = t.operators.recipients.into_iter().collect();
-
-        let agents = decode_keys(t.agents)?;
-        let repeaters = decode_keys(t.repeaters)?;
-
         let permissions: BTreeMap<String, BTreeSet<String>> = t
             .permissions
             .into_iter()
-            .map(|(agent, p)| (agent, p.allow.into_iter().collect()))
+            .map(|(agent, p)| (agent, p.into_iter().collect()))
             .collect();
 
         let b = Bunker {
             operators,
-            agents,
-            repeaters,
-            actions: t.actions,
+            agents: t.agents,
+            targets: t.targets,
             permissions,
+            secrets: t.secrets,
         };
         b.validate()?;
         Ok(b)
-    }
-}
-
-fn decode_keys(m: BTreeMap<String, KeyEntry>) -> Result<BTreeMap<String, [u8; 32]>, BunkerError> {
-    let mut out = BTreeMap::new();
-    for (id, e) in m {
-        let bytes = B64
-            .decode(e.ed25519_pubkey_b64.as_bytes())
-            .map_err(|_| BunkerError::BadOwned(format!("bad base64 pubkey for {id}")))?;
-        if bytes.len() != 32 {
-            return Err(BunkerError::BadOwned(format!("pubkey for {id} must be 32 bytes")));
-        }
-        let mut pk = [0u8; 32];
-        pk.copy_from_slice(&bytes);
-        out.insert(id, pk);
-    }
-    Ok(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bunker_toml_roundtrip() {
-        let mut b = Bunker::new();
-        b.operators.insert("ssh-ed25519 AAAA".to_string());
-        b.agents.insert("agent".to_string(), [1u8; 32]);
-        b.repeaters.insert("rep".to_string(), [2u8; 32]);
-        b.actions.insert("echo".to_string(), "rep".to_string());
-        b.permissions
-            .insert("agent".to_string(), BTreeSet::from(["echo".to_string()]));
-
-        let enc = b.encode().unwrap();
-        let dec = Bunker::decode(&enc).unwrap();
-        assert_eq!(dec, b);
     }
 }

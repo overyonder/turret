@@ -78,8 +78,8 @@
   <path d="M 810 175 L 835 175" class="arrow" />
 
   <rect x="835" y="250" width="200" height="75" class="subbox" rx="10" />
-  <text x="855" y="278" class="label">Repeaters</text>
-  <text x="855" y="301" class="small">deterministic helpers</text>
+  <text x="855" y="278" class="label">Actions</text>
+  <text x="855" y="301" class="small">exec templates</text>
 
   <rect x="620" y="350" width="190" height="60" class="subbox" rx="10" />
   <text x="640" y="385" class="label">Service A</text>
@@ -91,10 +91,10 @@
   <text x="850" y="455" class="label">Service D</text>
 
   <path d="M 935 230 L 935 250" class="arrow" />
-  <path d="M 900 325 C 850 340, 770 355, 810 375" class="arrow" />
-  <path d="M 900 325 C 850 385, 770 420, 810 450" class="arrow" />
-  <path d="M 970 325 C 980 340, 995 350, 1035 375" class="arrow" />
-  <path d="M 970 325 C 980 385, 995 420, 1035 450" class="arrow" />
+  <path d="M 935 325 C 850 340, 770 355, 810 375" class="arrow" />
+  <path d="M 935 325 C 850 385, 770 420, 810 450" class="arrow" />
+  <path d="M 935 325 C 980 340, 995 350, 1035 375" class="arrow" />
+  <path d="M 935 325 C 980 385, 995 420, 1035 450" class="arrow" />
 
   <rect x="625" y="500" width="410" height="30" class="turret" rx="12" />
   <text x="640" y="520" class="small">Gap filled: secrets stay local; agent gets one revocable credential.</text>
