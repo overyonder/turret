@@ -6,7 +6,7 @@ Stop giving your agents secrets.
 
 ## BLUF
 
-LLM agents are now practical operators: they can run shell commands, deploy code, and touch real systems. That also makes them a different trust boundary from traditional scripts.
+LLM agents are now practical admins: they can run shell commands, deploy code, and touch real systems. That also makes them a different trust boundary from traditional scripts.
 
 Turret is a small local control point that lets agents act without directly holding service credentials.
 
